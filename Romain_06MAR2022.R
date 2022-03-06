@@ -88,6 +88,3 @@ summary(mod)
 library("ggplot2")
 ggplot(tennis2)+aes(x=tennis$O_rank, y=tennis2$O_age)+geom_point(bins=40)
 
-
-
-
