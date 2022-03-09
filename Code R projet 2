@@ -1,0 +1,120 @@
+# Installation des librairies install.packages
+# install.packages("tibble")
+# install.packages("tidyr")
+# install.packages("dplyr")
+# install.packages("glmnet")
+# install.packages("rpart")
+# install.packages("ggplot2")
+# install.packages("rpart.plot")
+library(rpart.plot)
+# library(tibble)
+# library(tidyr)
+library(regclass) # matrice de confusion
+library(dplyr)
+library(glmnet)
+library(rpart)
+library(ggplot2)
+library(corrplot) # correlation matrix
+
+# Projet Prédiction Tennis
+# Importation des données
+tennis <- read.table("C:/Users/romai/Downloads/atp_matches_2016-2022_Medvedev.csv", header = TRUE, sep = ";", dec = ".")
+
+# Analyse des données de tennis
+dim(tennis)
+class (tennis)
+summary(tennis)
+
+round(prop.table(table(tennis$Y))*100, 2) # 30% Vs 70% => donnee desequilibree
+
+# On enléve les données incompletes : tailles de joueurs ou classement
+tennis = na.omit(tennis)
+summary(tennis)
+# on observe avec la fonction ci-dessus que l'on a supprimé 18 lignes ou l'on n'avait pas de valeur
+
+# si on veut faire une régression logistique, il est important de transfromer les valeus qualitatives en facteurs (ex Y, surface,nom des opposants, etc. )
+# on voit pas exemple que Y est considéré comme un entier dans la classe et non comme un facteur
+class(tennis$Y)
+tennis$Y <- as.factor(tennis$Y)
+dates <- as.character(tennis$tourney_date)
+tennis$tourney_date <- as.Date(dates, format="%Y%m%d")
+# Matrice de corrÃ©lation
+mat_cor <- cor(tennis[,-c(1,2,3,4,5)])
+corrplot(mat_cor, tl.cex = 0.5)
+# on essaie de regarder la taille moyenne des jouers de tennis
+mean(tennis$O_ht)
+
+# on essaie de restituer un arbre de décision entre les victoires et les défaites
+# on doit utiliser le package RPART et RPART plot
+
+arbre <- rpart(Y~., data = tennis, cp=0.02, method = 'class')
+print(arbre)
+rpart.plot(arbre, main="Match Medvedev")
+summary(tennis)
+tennis2<- tennis[,-4] # on supprime lla colonne du nom de l'opposant de Medvedev
+tennis2
+arbre2 <- rpart(Y~., data = tennis2, cp=0.02)
+rpart.plot(arbre2, main="Match Medvedev sans les noms")
+
+summary(tennis)
+tennis2<- tennis[,-4] # on supprime la colonne du nom de l'opposant de Medvedev
+tennis2
+
+# on veut maintenant prédire la victoire ou la défaite de Medvedev
+# On va diviser notre fichier en 2: l'un pour l'apprentissage 80% et l'autre pour le test 20%
+
+modlog = glm(Y~., data = tennis2, family = 'binomial')
+summary(modlog)
+predict(modlog, tennis2[1,], type="response")
+
+set.seed(1234)
+n <- nrow(tennis2)
+p <- 0.8
+
+head(tennis2[,1:5])
+tennis2 <- tennis2[sample(n),]
+tennis2A <- tennis2[1:(n*p),]
+tennis2T <- tennis2[-(1:(n*p)),]
+
+summary(tennis2T)
+RES <- data.frame(Y = tennis2T$Y)
+mod <- glm(Y~., data = tennis2A, family = 'binomial')
+RES['glm'] <- predict(mod, tennis2T, type="response")
+summary(RES)
+RESTmp = RES[,-1]
+RESTmp[RESTmp < 0.5] = 0
+RESTmp[RESTmp >= 0.5] = 1
+RESTmp <- as.data.frame(RESTmp)
+RESTmp = cbind(RES[,1], RESTmp)
+head(RESTmp)
+summary(RESTmp)
+colnames(RESTmp) <- c('Y', 'glm')
+confusion_matrix(mod,DATA=tennis2T)
+RES <- RESTmp
+err = function(X,Y){mean(X!=Y)}
+apply(RES, 2, err, Y = RES[,1])
+#test sur nos donnees
+Pred <- data.frame(Y = tennis2$Y)
+
+Pred['glm'] <- predict(mod, tennis2[-1], type="response")
+RESTmp = Pred[,-1]
+RESTmp[RESTmp < 0.5] = 0
+RESTmp[RESTmp >= 0.5] = 1
+Pred <- cbind(Pred[,1], RESTmp)
+
+apply(Pred, 2, err, Y = Pred[,1])
+summary(mod)
+
+plot(mod)
+
+# les étoiles permettent de voir quelles sont celles qui influent dans le résultat: 3 étoiles pour le classement et la date du tournoi et 1 étoile pour la surface.
+# il n'y a qu'un match par jour ce qui explique 3 étoiles pour le résultat.
+
+
+# visuel: on installe le package ggplot2
+library("ggplot2")
+ggplot(tennis2)+aes(x=tennis$O_rank, y=tennis2$O_age)+geom_point(bins=40)
+
+tennis %>% 
+  filter(O_rank <= 200) %>%
+  ggplot()+ geom_point(aes(tourney_date, O_rank, col = Y))
